@@ -466,7 +466,7 @@
                 emailInputs.forEach(input => { setInputValue(input, 'nn@nn.de'); });
                 phoneInputs.forEach(input => { setInputValue(input, '0'); });
                 console.log('Datenschutz action completed for all relevant fields.');
-                showNotification('Datenschutz action completed!', 'success'); // This notification remains
+                // showNotification('Datenschutz action completed!', 'success'); -------------- Notification removed because it just adds another useles click -- can be always reactivated //
                 scrollToQuillEditor();
             };
 
