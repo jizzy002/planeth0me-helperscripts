@@ -1,7 +1,7 @@
+![planeth0me](https://s3-eu-west-1.amazonaws.com/tpd/logos/5c90bafbc0170b0001e600bf/0x0.png)
+# Salesplanet, CCPlanet & Immoplanet Datenschutz Scripts
 
-# Salesplanet/Immoplanet Datenschutz Scripts
-
-This repository contains a collection of JavaScript userscripts developed to streamline and simplify daily work processes. Every script has its concept from me, and written using Google Gemini AI.
+This repository contains a collection of JavaScript userscripts developed and written to streamline and simplify my daily work processes. While I am not a person that knows to code there are many AI tools available these days with which I'm able to plan, construct, test and generate all the code needed for these scripts to work.
 
 ## Scripts
 
