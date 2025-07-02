@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CCplanet Abbruchgrund dropdown shortcut
 // @namespace    http://tampermonkey.net/
-// @version      0.9
-// @description  Fetches dropdown data from a URL, matches width, and ensures persistence.
+// @version      1.3
+// @description  Fetches dropdown data from a URL, matches width, ensures persistence. Inserts text bolded on new lines, emulating Enter.
 // @author       Gemini AI & aldjan
 // @match        https://ccplanet.planethome.de/*
 // @grant        GM_xmlhttpRequest
@@ -126,7 +126,8 @@
     }
 
     /**
-     * Fills the description field with the selected text.
+     * Fills the description field with the selected text, ensuring it's bolded and
+     * placed on new lines, mimicking a paragraph break in Quill.
      * @param {string} textToInsert - The text to insert into the description field.
      */
     function fillDescriptionField(textToInsert) {
@@ -136,35 +137,71 @@
             const quillInstance = textEditorDiv.__quill; // Attempt to access Quill instance
 
             if (quillInstance) {
-                const currentLength = quillInstance.getLength(); // Get current text length (includes a trailing newline)
-                // Insert new text followed by a newline at the end (before Quill's internal trailing newline)
-                quillInstance.insertText(currentLength - 1, '\n' + textToInsert + '\n');
-                quillInstance.setSelection(currentLength + textToInsert.length + 1); // Set cursor to end of inserted text
-            } else {
-                // Fallback for when Quill instance is not directly accessible
-                let currentContent = textEditorDiv.innerHTML.trim();
-                const newParagraphHTML = `<p>${textToInsert}</p>`;
+                // Get the current length of the document. This is the insertion point at the very end.
+                let insertPoint = quillInstance.getLength();
 
-                if (currentContent === '<p><br></p>' || currentContent === '') {
-                    textEditorDiv.innerHTML = newParagraphHTML;
-                } else {
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = currentContent;
-                    let lastP = tempDiv.querySelector('p:last-of-type');
-
-                    if (lastP) {
-                        lastP.innerHTML += `<br>${textToInsert}`;
-                    } else {
-                        tempDiv.innerHTML += newParagraphHTML;
-                    }
-                    textEditorDiv.innerHTML = tempDiv.innerHTML;
+                // 1. Ensure a new paragraph break *before* the bold text.
+                // If the editor is not completely empty (length > 1) AND the last character before Quill's
+                // implicit newline is not already a newline, insert one.
+                // This creates a new paragraph block before our content.
+                if (insertPoint > 1 && quillInstance.getText(insertPoint - 2, 1) !== '\n') {
+                    quillInstance.insertText(insertPoint - 1, '\n', { 'bold': false });
+                    insertPoint = quillInstance.getLength(); // Update insertPoint after inserting newline
+                } else if (insertPoint === 1 && quillInstance.getText() === '\n') {
+                    // Editor is empty (<p><br></p>), we want to clear this to start clean
+                    quillInstance.setText('');
+                    insertPoint = 0; // Reset insert point to beginning
                 }
 
-                // Dispatch events to notify Angular/Quill of changes
+                // 2. Insert the bolded text at the determined insertPoint.
+                quillInstance.insertText(insertPoint, textToInsert, { bold: true });
+                // Update insertPoint after adding the bold text
+                insertPoint = quillInstance.getLength();
+
+                // 3. Ensure a new paragraph break *after* the bold text.
+                // This creates a new paragraph block below our content.
+                quillInstance.insertText(insertPoint, '\n', { 'bold': false });
+                insertPoint = quillInstance.getLength(); // Update insertPoint after adding final newline
+
+                // Set the selection (cursor) to the very end of the document after all insertions.
+                quillInstance.setSelection(insertPoint);
+
+                // Manually dispatch events to ensure Angular/Quill updates its internal model and UI.
+                // This is crucial for rich text editors where direct DOM manipulation might not fully sync.
                 textEditorDiv.dispatchEvent(new Event('input', { bubbles: true }));
                 textEditorDiv.dispatchEvent(new Event('change', { bubbles: true }));
                 textEditorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
-                textEditorDiv.focus(); // Set focus and then blur to potentially trigger more updates
+                textEditorDiv.focus(); // Set focus then blur can help trigger Angular change detection
+                textEditorDiv.blur();
+
+            } else {
+                // Fallback for when Quill instance is not directly accessible (e.g., if page structure changes or it's a simple textarea)
+                let currentContent = textEditorDiv.innerHTML.trim();
+                const boldedTextHTML = `<strong>${textToInsert}</strong>`;
+                const newParagraphHTML = `<p>${boldedTextHTML}</p>`;
+                // This matches how Quill represents an empty line for a new paragraph break
+                const emptyParagraphHTML = `<p><br></p>`;
+
+                if (currentContent === '<p><br></p>' || currentContent === '<p></p>' || currentContent === '') {
+                    // If the editor is empty, just insert the bold text paragraph followed by an empty line paragraph
+                    textEditorDiv.innerHTML = newParagraphHTML + emptyParagraphHTML;
+                } else {
+                    // Otherwise, append an empty line paragraph, then the bold text paragraph, then another empty line paragraph.
+                    // This creates the desired spacing around the new content.
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = currentContent;
+
+                    // Append the new content block
+                    tempDiv.innerHTML += emptyParagraphHTML + newParagraphHTML + emptyParagraphHTML;
+
+                    textEditorDiv.innerHTML = tempDiv.innerHTML; // Update the editor's content
+                }
+
+                // Dispatch events to notify Angular/Quill of changes, mimicking user input for UI updates
+                textEditorDiv.dispatchEvent(new Event('input', { bubbles: true }));
+                textEditorDiv.dispatchEvent(new Event('change', { bubbles: true }));
+                textEditorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
+                textEditorDiv.focus(); // Set focus then blur can help trigger Angular change detection
                 textEditorDiv.blur();
             }
         }
@@ -174,10 +211,9 @@
     // 1. Fetch the primary JSON data from the GitHub URL.
     await fetchMainJsonData();
 
-    // 2. Set up the MutationObserver to ensure the dropdown is added/re-added dynamically
-    // whenever the relevant part of the DOM changes.
+    // 2. Set up a MutationObserver to dynamically add the dropdown when the target elements appear.
     const observer = new MutationObserver((mutations, obs) => {
-        addDropdown(); // This function internally checks if the dropdown already exists
+        addDropdown(); // This function internally checks if the dropdown already exists to prevent duplicates
     });
 
     observer.observe(document.body, {
@@ -186,7 +222,7 @@
     });
 
     // 3. Also, try to add the dropdown immediately on initial page load
-    // in case the target elements are already present.
+    // in case the target elements are already present in the DOM.
     addDropdown();
 
 })();
