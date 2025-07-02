@@ -1,64 +1,75 @@
 // ==UserScript==
 // @name         CCplanet Abbruchgrund dropdown shortcut
 // @namespace    http://tampermonkey.net/
-// @version      0.5
-// @description  Adds a dropdown below the description field to quickly insert predefined text, matching its width, and ensures persistence on dynamic page loads.
+// @version      0.9
+// @description  Fetches dropdown data from a URL, matches width, and ensures persistence.
 // @author       Gemini AI & aldjan
 // @match        https://ccplanet.planethome.de/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-(function() {
+(async function() { // Use an async IIFE to allow awaiting network requests
     'use strict';
 
-    const jsonData = {
-        "Kein Interesse / Anruf von KD beendet": [
-            "Kein Interesse, das Gespräch vom KD beendet.",
-            "KD hat das Gespräch sofort nach der Vorstellung beendet.",
-            "Das Gespräch wurde vom KD beendet.",
-            "KD war auf der Arbeit, hat das Gespräch beendet.",
-            "KD wünscht keine Anrufe mehr, meldet sich bei Bedarf.",
-            "Kontakt besteht Preisvorschlag abgelehnt, Gespräch beendet vom KD."
-        ],
-        "Follow-Up benötigt / Möchte kontakt später": [
-            "KD hat sich das Exposé noch nicht angesehen, wird sich bei Bedarf melden.",
-            "Die Ehefrau konnte keine Infos geben, der Partner wird sich bei Bedarf melden.",
-            "Der Mann konnte keine Infos geben, die Partnerin wird sich bei Bedarf melden.",
-            "KD war in einer Besprechung, wird sich bei Bedarf melden.",
-            "KD beim Autofahren erreicht wird sich bei uns melden.",
-            "KD möchte sich noch die Gegend ansehen und wird sich bei uns melden.",
-            "KD wird sich bei Bedarf melden, hat das Gespräch beendet.",
-            "Exposé für einen Kunden heruntergeladen, kommt bei Bedarf auf uns zu.",
-            "Exposé für einen Angehörigen heruntergeladen, kommt bei Bedarf auf uns zu.",
-            "KD ist in der Findungsphase, wird sich bei Bedarf melden.",
-            "KD möchte seinen Preisvorschlag zusenden, braucht noch ein wenig Zeit!",
-            "KD ist gerade im Urlaub, meldet sich bei der Rückkehr.",
-            "KD ist gerade auf der Geschäftsreise, meldet sich bei der Rückkehr.",
-            "KD ist im Kontakt mit dem Makler."
-        ],
-        "Falscher Kontakt": [
-            "Abbruch Grund: Rufnummer existiert nicht!",
-            "Abbruch Grund: Rufnummer ist nicht vergeben!",
-            "XX Nummer kein Kontakt möglich.",
-            "Keine gültige Nummer hinterlassen!",
-            "Die Nummer gehört nicht dem KD.",
-            "Da Heute Feiertag ist, den KD nicht kontaktiert."
-        ],
-        "Mehr informationen / Abwarten": [
-            "KD hat keine Zeit, erneut kontaktieren.",
-            "KD wollte wissen wann sich der Makler meldet um etwas Geduld gebeten.",
-            "Auf die Frage nach dem Immobilienstatus möchte der KD nicht antworten.",
-            "KD hat sich kein Exposé heruntergeladen!",
-            "Bereits mit dem KD gesprochen."
-        ]
-    };
+    // This will hold the JSON data after it's fetched
+    let jsonData = {};
 
+    /**
+     * Fetches the primary JSON data from the specified GitHub URL.
+     * @returns {Promise<void>} A promise that resolves when jsonData is fetched or on error.
+     */
+    async function fetchMainJsonData() {
+        console.log("Attempting to fetch main JSON data from GitHub...");
+        return new Promise((resolve) => {
+            if (typeof GM_xmlhttpRequest === 'undefined') {
+                console.error("GM_xmlhttpRequest is not available. Cannot fetch external JSON data. Please ensure '@grant GM_xmlhttpRequest' is in your script header.");
+                jsonData = {}; // Fallback to empty data
+                resolve();
+                return;
+            }
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: "https://raw.githubusercontent.com/jizzy002/planeth0me-helperscripts/refs/heads/main/configurations/abbruchgrund.json",
+                timeout: 10000, // 10 seconds timeout
+                onload: function(response) {
+                    try {
+                        const fetchedData = JSON.parse(response.responseText);
+                        jsonData = fetchedData; // Assign fetched data to the global jsonData variable
+                        console.log("Main JSON data fetched successfully:", jsonData);
+                        resolve();
+                    } catch (e) {
+                        console.error("Error parsing fetched JSON data from GitHub:", e);
+                        jsonData = {}; // Ensure jsonData is an empty object on parse error
+                        resolve();
+                    }
+                },
+                onerror: function(response) {
+                    console.error("GM_xmlhttpRequest error fetching main JSON from GitHub:", response.status, response.statusText);
+                    jsonData = {}; // Ensure jsonData is an empty object on network error
+                    resolve();
+                },
+                ontimeout: function() {
+                    console.error("GM_xmlhttpRequest timeout for main JSON fetch from GitHub.");
+                    jsonData = {}; // Ensure jsonData is an empty object on timeout
+                    resolve();
+                }
+            });
+        });
+    }
+
+    /**
+     * Adds the dropdown box next to the target element.
+     * Checks if dropdown already exists to prevent duplicates.
+     */
     function addDropdown() {
         const targetTextEditor = document.querySelector('ph-texteditor[formcontrolname="description"]');
         const existingDropdown = document.getElementById('textHelperDropdown');
 
         // Only add the dropdown if the target editor exists AND the dropdown doesn't already exist
-        if (targetTextEditor && !existingDropdown) {
+        // And ensure jsonData is populated before attempting to build options
+        if (targetTextEditor && !existingDropdown && Object.keys(jsonData).length > 0) {
+            console.log("Adding dropdown...");
             const dropdown = document.createElement('select');
             dropdown.id = 'textHelperDropdown';
 
@@ -87,12 +98,17 @@
                     const optgroup = document.createElement('optgroup');
                     optgroup.label = category;
 
-                    jsonData[category].forEach(phrase => {
-                        const option = document.createElement('option');
-                        option.value = phrase;
-                        option.textContent = phrase;
-                        optgroup.appendChild(option);
-                    });
+                    // Ensure category is an array before iterating to prevent errors
+                    if (Array.isArray(jsonData[category])) {
+                        jsonData[category].forEach(phrase => {
+                            const option = document.createElement('option');
+                            option.value = phrase;
+                            option.textContent = phrase;
+                            optgroup.appendChild(option);
+                        });
+                    } else {
+                        console.warn(`Category "${category}" in fetched JSON is not an array. Skipping options for this category.`);
+                    }
                     dropdown.appendChild(optgroup);
                 }
             }
@@ -104,22 +120,28 @@
                 if (selectedText) {
                     fillDescriptionField(selectedText);
                 }
-                event.target.value = '';
+                event.target.value = ''; // Reset dropdown to default after selection
             });
         }
     }
 
+    /**
+     * Fills the description field with the selected text.
+     * @param {string} textToInsert - The text to insert into the description field.
+     */
     function fillDescriptionField(textToInsert) {
         const textEditorDiv = document.querySelector('ph-texteditor[formcontrolname="description"] .ql-editor');
 
         if (textEditorDiv) {
-            const quillInstance = textEditorDiv.__quill;
+            const quillInstance = textEditorDiv.__quill; // Attempt to access Quill instance
 
             if (quillInstance) {
-                const currentLength = quillInstance.getLength();
+                const currentLength = quillInstance.getLength(); // Get current text length (includes a trailing newline)
+                // Insert new text followed by a newline at the end (before Quill's internal trailing newline)
                 quillInstance.insertText(currentLength - 1, '\n' + textToInsert + '\n');
-                quillInstance.setSelection(currentLength + textToInsert.length + 1);
+                quillInstance.setSelection(currentLength + textToInsert.length + 1); // Set cursor to end of inserted text
             } else {
+                // Fallback for when Quill instance is not directly accessible
                 let currentContent = textEditorDiv.innerHTML.trim();
                 const newParagraphHTML = `<p>${textToInsert}</p>`;
 
@@ -138,30 +160,33 @@
                     textEditorDiv.innerHTML = tempDiv.innerHTML;
                 }
 
+                // Dispatch events to notify Angular/Quill of changes
                 textEditorDiv.dispatchEvent(new Event('input', { bubbles: true }));
                 textEditorDiv.dispatchEvent(new Event('change', { bubbles: true }));
                 textEditorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
-                textEditorDiv.focus();
+                textEditorDiv.focus(); // Set focus and then blur to potentially trigger more updates
                 textEditorDiv.blur();
             }
         }
     }
 
-    // Use a MutationObserver to ensure the script runs after the necessary DOM elements are loaded.
-    // This observer will now remain active.
+    // --- Main Execution Flow ---
+    // 1. Fetch the primary JSON data from the GitHub URL.
+    await fetchMainJsonData();
+
+    // 2. Set up the MutationObserver to ensure the dropdown is added/re-added dynamically
+    // whenever the relevant part of the DOM changes.
     const observer = new MutationObserver((mutations, obs) => {
-        // We call addDropdown on every mutation, but the addDropdown function itself
-        // now checks if the dropdown already exists before creating it.
-        addDropdown();
+        addDropdown(); // This function internally checks if the dropdown already exists
     });
 
-    // Start observing the document body for changes in its children and their descendants.
     observer.observe(document.body, {
-        childList: true,
-        subtree: true
+        childList: true, // Observe direct children additions/removals
+        subtree: true // Observe all descendants of body
     });
 
-    // Also, try to add the dropdown immediately in case the elements are already present on initial load
+    // 3. Also, try to add the dropdown immediately on initial page load
+    // in case the target elements are already present.
     addDropdown();
 
 })();
