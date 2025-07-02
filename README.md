@@ -21,7 +21,7 @@ For detailed instructions on how to install userscripts with Tampermonkey, pleas
 
 Once installed, these scripts simplify your workflow by automating the process of **filling specific fields and replacing data** on web pages. While the exact steps will depend on the specific script and the page you're on, their core function is to streamline repetitive data entry and manipulation.
 
-## Salesplanet Script in-dept
+## Salesplanet Script in-depth
 
 This Tampermonkey script for `salesplanet.planethome.de` enhances the user's workflow by adding persistent UI elements and automating data handling. It features:
 
