@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.12
 // @description  Adds "Datenschutz" and "Weitergabe an Dritte" buttons with specific colors and hover effects to fill fields and notes on mak.planethome.de. Includes scroll to notes for F-Leads.
-// @author       aldjan
+// @author       Gemini AI & aldjan
 // @match        https://mak.planethome.de/*
 // @grant        none
 // ==/UserScript==

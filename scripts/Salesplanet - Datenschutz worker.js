@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.26
 // @description  Adds highly persistent, right-aligned, vertically-centered copy buttons for Name, Email, Kunden-ID, Address, and automated Datenschutz and a dropdown for Sperrung/Widerruf buttons on salesplanet.planethome.de, visible only when a customer's detail page is active, now handling multiple email/phone fields for Datenschutz, with a toggle button for action buttons, success notifications, and auto-scrolling/focusing to Quill editor.
-// @author       aldjan
+// @author       Gemini AI & aldjan
 // @match        https://salesplanet.planethome.de/*
 // @grant        GM_setClipboard
 // @grant        GM_setValue

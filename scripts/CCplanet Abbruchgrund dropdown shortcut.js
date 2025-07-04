@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         CCplanet Abbruchgrund dropdown shortcut
+// @name         CCplanet Abbruchgrund Dropdown Shortcut
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Fetches dropdown data from a URL, matches width, ensures persistence. Inserts text bolded on new lines, emulating Enter.
 // @author       Gemini AI & aldjan
 // @match        https://ccplanet.planethome.de/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
 // ==/UserScript==
 
 (async function() { // Use an async IIFE to allow awaiting network requests
@@ -14,44 +16,105 @@
     // This will hold the JSON data after it's fetched
     let jsonData = {};
 
+    // Keys for local storage
+    const DATA_KEY = 'abbruchgrund_data';
+    const LAST_FETCH_KEY = 'abbruchgrund_last_fetch';
+    // Cache duration: 24 hours (in milliseconds)
+    const CACHE_DURATION_HOURS = 3 ;
+
     /**
-     * Fetches the primary JSON data from the specified GitHub URL.
-     * @returns {Promise<void>} A promise that resolves when jsonData is fetched or on error.
+     * Fetches the primary JSON data from the specified GitHub URL,
+     * using local cache if available and not stale.
+     * @returns {Promise<void>} A promise that resolves when jsonData is fetched or loaded.
      */
     async function fetchMainJsonData() {
-        console.log("Attempting to fetch main JSON data from GitHub...");
-        return new Promise((resolve) => {
-            if (typeof GM_xmlhttpRequest === 'undefined') {
-                console.error("GM_xmlhttpRequest is not available. Cannot fetch external JSON data. Please ensure '@grant GM_xmlhttpRequest' is in your script header.");
-                jsonData = {}; // Fallback to empty data
-                resolve();
-                return;
-            }
+        console.log("Attempting to fetch main JSON data...");
 
+        // Check if GM functions are available before attempting to use them
+        if (typeof GM_getValue !== 'function' || typeof GM_setValue !== 'function' || typeof GM_xmlhttpRequest !== 'function') {
+            console.error("Tampermonkey GM_ functions (getValue, setValue, xmlhttpRequest) are not available. Cannot fetch or store external JSON data. Ensure all '@grant' directives are correctly set in your script header.");
+            jsonData = {}; // Fallback to empty data
+            return; // Exit early if GM functions are missing
+        }
+
+        // Try to load from local storage first
+        const cachedData = await GM_getValue(DATA_KEY, null);
+        const lastFetchTime = await GM_getValue(LAST_FETCH_KEY, 0);
+        const currentTime = Date.now();
+
+        if (cachedData && (currentTime - lastFetchTime < CACHE_DURATION_HOURS)) {
+            try {
+                jsonData = JSON.parse(cachedData);
+                console.log("Main JSON data loaded from local storage (cached).");
+                return; // Use cached data, no need to fetch from network
+            } catch (e) {
+                console.error("Error parsing cached JSON data. Will attempt to re-fetch from network:", e);
+                // If cached data is corrupted, fall through to fetch from network
+            }
+        }
+
+        // If no valid cached data or cache is stale, fetch from network
+        return new Promise((resolve) => {
             GM_xmlhttpRequest({
                 method: "GET",
                 url: "https://raw.githubusercontent.com/jizzy002/planeth0me-helperscripts/refs/heads/main/configurations/abbruchgrund.json",
                 timeout: 10000, // 10 seconds timeout
-                onload: function(response) {
+                onload: async function(response) { // Mark as async to use await for GM_setValue
                     try {
                         const fetchedData = JSON.parse(response.responseText);
-                        jsonData = fetchedData; // Assign fetched data to the global jsonData variable
-                        console.log("Main JSON data fetched successfully:", jsonData);
+                        jsonData = fetchedData; // Assign fetched data
+                        console.log("Main JSON data fetched successfully from GitHub.");
+                        // Store the new data and timestamp locally
+                        await GM_setValue(DATA_KEY, JSON.stringify(fetchedData));
+                        await GM_setValue(LAST_FETCH_KEY, Date.now());
                         resolve();
                     } catch (e) {
                         console.error("Error parsing fetched JSON data from GitHub:", e);
-                        jsonData = {}; // Ensure jsonData is an empty object on parse error
+                        // On parse error, try to use old cached data if available
+                        if (cachedData) {
+                            try {
+                                jsonData = JSON.parse(cachedData);
+                                console.log("Falling back to old cached data due to fetch error.");
+                            } catch (e2) {
+                                console.error("Old cached data also corrupted. Using empty data.", e2);
+                                jsonData = {};
+                            }
+                        } else {
+                            jsonData = {}; // No cached data, use empty
+                        }
                         resolve();
                     }
                 },
-                onerror: function(response) {
+                onerror: async function(response) { // Mark as async to use await for GM_getValue
                     console.error("GM_xmlhttpRequest error fetching main JSON from GitHub:", response.status, response.statusText);
-                    jsonData = {}; // Ensure jsonData is an empty object on network error
+                    // On network error, try to use old cached data if available
+                    if (cachedData) {
+                        try {
+                            jsonData = JSON.parse(cachedData);
+                            console.log("Falling back to old cached data due to network error.");
+                        } catch (e2) {
+                            console.error("Old cached data also corrupted. Using empty data.", e2);
+                            jsonData = {};
+                        }
+                    } else {
+                        jsonData = {}; // No cached data, use empty
+                    }
                     resolve();
                 },
-                ontimeout: function() {
+                ontimeout: async function() { // Mark as async to use await for GM_getValue
                     console.error("GM_xmlhttpRequest timeout for main JSON fetch from GitHub.");
-                    jsonData = {}; // Ensure jsonData is an empty object on timeout
+                    // On timeout, try to use old cached data if available
+                    if (cachedData) {
+                        try {
+                            jsonData = JSON.parse(cachedData);
+                            console.log("Falling back to old cached data due to timeout.");
+                        } catch (e2) {
+                            console.error("Old cached data also corrupted. Using empty data.", e2);
+                            jsonData = {};
+                        }
+                    } else {
+                        jsonData = {}; // No cached data, use empty
+                    }
                     resolve();
                 }
             });
